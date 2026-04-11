@@ -1,5 +1,7 @@
 # Azure deployment (Person 3 checklist)
 
+For **GitHub Actions** (automated deploys), see [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md).
+
 Use your instructor’s naming rules if they differ. Below is a minimal, repeatable order of operations.
 
 ## 1. Create Azure resources

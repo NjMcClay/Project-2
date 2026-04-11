@@ -18,3 +18,7 @@ Phase 2 project: Azure Function API (`/api/analyze`) plus a static dashboard tha
 ## Cloud (Person 3)
 
 After deploying the Function App and Static Web App, set `CLOUD_ANALYZE_URL` in `frontend/app.js` to your live `https://<your-function-app>.azurewebsites.net/api/analyze`. See `docs/DEPLOYMENT.md`.
+
+## GitHub Actions
+
+Workflows live in `.github/workflows/`. Configure repository secrets as described in `docs/GITHUB_ACTIONS.md`.
