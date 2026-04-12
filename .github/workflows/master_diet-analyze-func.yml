@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - master
+      - main
   workflow_dispatch:
 
 env:
@@ -31,16 +32,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Install into .python_packages so the zip is self-contained. Relying only on Oryx during
-      # deploy often leaves the host down ("Function host is not running" / 503) if SCM build fails.
-      - name: Bundle dependencies for Functions
+      # Same pattern as https://github.com/Azure/actions-workflow-samples/blob/master/FunctionApp/linux-python-functionapp-on-azure.yml
+      # Run pip from the function app folder and keep Oryx enabled on deploy (do not use only one of them).
+      # Omit vendoring `azure-functions` into site-packages — it can fight the Functions host worker on Linux.
+      - name: Resolve project dependencies using pip
         run: |
           set -euo pipefail
+          cd backend
           python -m pip install --upgrade pip
-          mkdir -p backend/.python_packages/lib/site-packages
-          pip install -r backend/requirements.txt \
-            --target "backend/.python_packages/lib/site-packages" \
-            --upgrade --no-cache-dir
+          awk '/^[[:space:]]*#/ {next} /^[[:space:]]*$/ {next} /^[[:space:]]*azure-functions([=<>!~[:space:]]|$)/ {next} {print}' requirements.txt > /tmp/req-deploy.txt
+          pip install -r /tmp/req-deploy.txt --target=".python_packages/lib/site-packages" --upgrade --no-cache-dir
 
       # Optional: Add step to run tests here
 
@@ -87,7 +88,10 @@ jobs:
           app-name: 'diet-analyze-func'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          # Dependencies are already in the zip (.python_packages); skip Oryx to avoid SCM failures.
-          scm-do-build-during-deployment: false
-          enable-oryx-build: false
+          respect-funcignore: true
+          sku: flexconsumption
+          remote-build: true
+          # If this app is on the Flex Consumption plan, remove the two lines above and set instead:
+          # sku: flexconsumption
+          # remote-build: true
           
