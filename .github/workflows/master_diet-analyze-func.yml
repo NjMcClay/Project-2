@@ -13,7 +13,8 @@ on:
 env:
   # Python app and requirements.txt live under backend/
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
-  PYTHON_VERSION: '3.13' # set this to the python version to use (supports 3.6, 3.7, 3.8)
+  # Linux Consumption plan supports Python up to 3.12; 3.13 requires Flex/Dedicated.
+  PYTHON_VERSION: '3.12'
 
 jobs:
   build:

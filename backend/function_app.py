@@ -11,6 +11,38 @@ from azure.storage.blob import BlobClient
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
+def _access_control_allow_origin(req: func.HttpRequest) -> str:
+    """
+    Browsers require Access-Control-Allow-Origin to echo a specific origin when
+    credentials are involved; some setups also mis-handle '*'. Azure platform
+    503 responses omit CORS headers entirely — fix the 503 (runtime/deploy),
+    then this header applies to successful function responses.
+    """
+    origin = (req.headers.get("Origin") or "").strip()
+    extra = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+    if extra:
+        parts = [o.strip() for o in extra.split(",") if o.strip()]
+        if "*" in parts:
+            return "*"
+        allowed = frozenset(parts)
+        if origin in allowed:
+            return origin
+        return "*"
+    if origin.startswith("https://") and origin.endswith(".azurestaticapps.net"):
+        return origin
+    if origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+        return origin
+    return "*"
+
+
+def _cors_headers(req: func.HttpRequest) -> dict:
+    return {
+        "Access-Control-Allow-Origin": _access_control_allow_origin(req),
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+
 def _iter_diet_rows():
     """
     Local dev: read All_Diets.csv next to this file.
@@ -40,12 +72,7 @@ def _iter_diet_rows():
 def analyze(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Python HTTP trigger function processed a request.")
 
-    # Allow dashboard on Azure Static Web Apps (and localhost) to call this API from the browser.
-    cors_headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-    }
+    cors_headers = _cors_headers(req)
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=cors_headers)
 
