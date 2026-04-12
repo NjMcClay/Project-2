@@ -38,7 +38,7 @@ def _access_control_allow_origin(req: func.HttpRequest) -> str:
 def _cors_headers(req: func.HttpRequest) -> dict:
     return {
         "Access-Control-Allow-Origin": _access_control_allow_origin(req),
-        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
     }
 
@@ -68,13 +68,16 @@ def _iter_diet_rows():
     return csv.DictReader(io.StringIO(text))
 
 
-@app.route(route="analyze")
+@app.route(route="analyze", methods=["GET", "HEAD", "OPTIONS"])
 def analyze(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Python HTTP trigger function processed a request.")
 
     cors_headers = _cors_headers(req)
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=cors_headers)
+    # curl -I and many probes use HEAD; without an explicit method binding the host often returns 404.
+    if req.method == "HEAD":
+        return func.HttpResponse(status_code=200, headers=cors_headers)
 
     start_time = time.time()
 
