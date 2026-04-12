@@ -31,6 +31,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Validates requirements resolve; the deploy step uses Oryx on Azure to install into the app.
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
@@ -79,4 +80,7 @@ jobs:
           app-name: 'diet-analyze-func'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          # Zip only contains source; Oryx must pip install on Azure or imports fail → 503.
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
           
