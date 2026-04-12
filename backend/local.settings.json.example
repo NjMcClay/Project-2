@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+
+    "DIET_SOURCE_CONTAINER": "diet-data",
+    "DIET_SOURCE_BLOB_NAME": "All_Diets.csv",
+
+    "DIET_CLEAN_CONTAINER": "diet-data",
+    "DIET_CLEAN_BLOB_NAME": "cleaned/All_Diets.cleaned.csv",
+
+    "ANALYZE_CACHE_KEY": "diet:analyze:v1",
+    "ANALYZE_META_CACHE_KEY": "diet:analyze:meta:v1",
+
+    "REDIS_URL": "rediss://<your-redis-name>.redis.cache.windows.net:6380/0",
+    "REDIS_KEY": "<your-redis-primary-key>",
+
+    "API_SHARED_SECRET": "",
+    "CORS_ALLOWED_ORIGINS": "http://localhost:5500,https://lively-ocean-0a4dc570f.6.azurestaticapps.net"
+  }
+}
