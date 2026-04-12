@@ -31,9 +31,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Validates requirements resolve; the deploy step uses Oryx on Azure to install into the app.
-      - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+      # Install into .python_packages so the zip is self-contained. Relying only on Oryx during
+      # deploy often leaves the host down ("Function host is not running" / 503) if SCM build fails.
+      - name: Bundle dependencies for Functions
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          mkdir -p backend/.python_packages/lib/site-packages
+          pip install -r backend/requirements.txt \
+            --target "backend/.python_packages/lib/site-packages" \
+            --upgrade --no-cache-dir
 
       # Optional: Add step to run tests here
 
@@ -80,7 +87,7 @@ jobs:
           app-name: 'diet-analyze-func'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          # Zip only contains source; Oryx must pip install on Azure or imports fail → 503.
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
+          # Dependencies are already in the zip (.python_packages); skip Oryx to avoid SCM failures.
+          scm-do-build-during-deployment: false
+          enable-oryx-build: false
           
