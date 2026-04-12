@@ -55,9 +55,23 @@ You should see JSON with `macrosByDiet` and `executionTimeMs`.
 
 ## 4. CORS (required for browser dashboard)
 
-The Static Web App origin (e.g. `https://your-app.azurestaticapps.net`) must be allowed to call the Function origin.
+The browser blocks cross-origin `fetch()` unless the **Function** response allows your Static Web App origin.
 
-In **Function App** → **API** → **CORS**, add your Static Web App URL (scheme + host, no path). Save and restart if prompted.
+### A. Portal (recommended in addition to code)
+
+In **Function App** → **API** → **CORS**, add exactly (no trailing slash, no path):
+
+`https://lively-ocean-0a4dc570f.6.azurestaticapps.net`
+
+Use **your** hostname from the Static Web App **Overview** page if it differs. Save and restart the Function App if prompted.
+
+### B. Response headers (already in `backend/function_app.py`)
+
+The `analyze` handler returns `Access-Control-Allow-Origin: *` so the dashboard can load JSON after you redeploy the Function.
+
+### Wrong URL shows as “CORS” + 404
+
+If the dashboard still calls `https://your-function-app.azurewebsites.net/api/analyze`, that host does not exist → **404**, and the browser may still complain about CORS. Fix **`CLOUD_ANALYZE_URL`** in `frontend/app.js`, commit, push, wait for the Static Web App GitHub Action to finish, then hard-refresh the site (`Cmd+Shift+R`).
 
 ## 5. Deploy the frontend (Static Web App)
 

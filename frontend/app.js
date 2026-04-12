@@ -4,7 +4,7 @@
    * Example: https://diet-analyze-func.azurewebsites.net/api/analyze
    */
   const CLOUD_ANALYZE_URL =
-    "https://YOUR-FUNCTION-APP.azurewebsites.net/api/analyze";
+    "https://diet-analyze-func-apeebfb2b7esakae.eastus2-01.azurewebsites.net/api/analyze";
 
   const LOCAL_ANALYZE_URL = "http://localhost:7071/api/analyze";
 

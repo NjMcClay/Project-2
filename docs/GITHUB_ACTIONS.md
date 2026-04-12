@@ -43,7 +43,7 @@ The workflow uses plain static files: `app_location: frontend`, `skip_app_build:
 ### GitHub secrets
 
 | Secret name | Value |
-|-------------|--------|
+|-------------|--------
 | `AZURE_FUNCTIONAPP_NAME` | Function App **name** only (e.g. `diet-analyze-func`), not the full URL. |
 | `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | Full contents of the publish profile XML. |
 

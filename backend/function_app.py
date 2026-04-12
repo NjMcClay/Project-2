@@ -40,6 +40,15 @@ def _iter_diet_rows():
 def analyze(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Python HTTP trigger function processed a request.")
 
+    # Allow dashboard on Azure Static Web Apps (and localhost) to call this API from the browser.
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=cors_headers)
+
     start_time = time.time()
 
     averages = {}
@@ -88,5 +97,6 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps(result),
         mimetype="application/json",
-        status_code=200
+        status_code=200,
+        headers=cors_headers,
     )
