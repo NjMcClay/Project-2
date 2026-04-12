@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+=======
+import azure.functions as func
+import io
+import logging
+>>>>>>> ab3f10bc07a2679d60556629906ea3cf915939ce
 import csv
 import io
 import json
@@ -11,9 +17,12 @@ import azure.functions as func
 from azure.storage.blob import BlobServiceClient
 import redis
 
+from azure.storage.blob import BlobClient
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
+<<<<<<< HEAD
 SOURCE_CONTAINER = os.getenv("DIET_SOURCE_CONTAINER", "diet-data")
 SOURCE_BLOB_NAME = os.getenv("DIET_SOURCE_BLOB_NAME", "All_Diets.csv")
 
@@ -22,6 +31,47 @@ CLEAN_BLOB_NAME = os.getenv("DIET_CLEAN_BLOB_NAME", "cleaned/All_Diets.cleaned.c
 
 ANALYZE_CACHE_KEY = os.getenv("ANALYZE_CACHE_KEY", "diet:analyze:v1")
 META_CACHE_KEY = os.getenv("ANALYZE_META_CACHE_KEY", "diet:analyze:meta:v1")
+=======
+def _iter_diet_rows():
+    """
+    Local dev: read All_Diets.csv next to this file.
+    Azure (Person 3): set app settings DIET_BLOB_CONTAINER (and optionally
+    DIET_BLOB_NAME) so the function reads the uploaded CSV from Blob Storage.
+    """
+    container = os.environ.get("DIET_BLOB_CONTAINER")
+    blob_name = os.environ.get("DIET_BLOB_NAME", "All_Diets.csv")
+    conn = os.environ.get("AzureWebJobsStorage") or os.environ.get(
+        "DIET_BLOB_CONNECTION_STRING"
+    )
+
+    if container and conn:
+        blob = BlobClient.from_connection_string(
+            conn, container_name=container, blob_name=blob_name
+        )
+        raw = blob.download_blob().readall().decode("utf-8")
+        return csv.DictReader(io.StringIO(raw))
+
+    csv_path = os.path.join(os.path.dirname(__file__), "All_Diets.csv")
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        text = f.read()
+    return csv.DictReader(io.StringIO(text))
+
+
+@app.route(route="analyze")
+def analyze(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info("Python HTTP trigger function processed a request.")
+
+    # Allow dashboard on Azure Static Web Apps (and localhost) to call this API from the browser.
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=cors_headers)
+
+    start_time = time.time()
+>>>>>>> ab3f10bc07a2679d60556629906ea3cf915939ce
 
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AzureWebJobsStorage", "")
 REDIS_URL = os.getenv("REDIS_URL", "")
@@ -29,6 +79,7 @@ REDIS_KEY = os.getenv("REDIS_KEY", "")
 API_SHARED_SECRET = os.getenv("API_SHARED_SECRET", "").strip()
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
 
+<<<<<<< HEAD
 blob_service = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
 
 
@@ -42,6 +93,24 @@ def get_redis_client() -> redis.Redis:
         ssl=True,
     )
 
+=======
+    reader = _iter_diet_rows()
+    for row in reader:
+        diet_type = row["Diet_type"]
+
+        if diet_type not in averages:
+            averages[diet_type] = {
+                "Protein": 0.0,
+                "Carbs": 0.0,
+                "Fat": 0.0,
+                "count": 0,
+            }
+
+        averages[diet_type]["Protein"] += float(row["Protein(g)"])
+        averages[diet_type]["Carbs"] += float(row["Carbs(g)"])
+        averages[diet_type]["Fat"] += float(row["Fat(g)"])
+        averages[diet_type]["count"] += 1
+>>>>>>> ab3f10bc07a2679d60556629906ea3cf915939ce
 
 def _access_control_allow_origin(req: func.HttpRequest) -> str:
     origin = (req.headers.get("Origin") or "").strip()
@@ -266,6 +335,7 @@ def _build_analyze_payload(rows: list[dict[str, Any]], source_blob_name: str) ->
         },
     }
 
+<<<<<<< HEAD
 
 def _cache_analyze_payload(payload: dict[str, Any]) -> None:
     client = get_redis_client()
@@ -408,3 +478,11 @@ def recipes(req: func.HttpRequest) -> func.HttpResponse:
     }
 
     return _json_response(req, response)
+=======
+    return func.HttpResponse(
+        json.dumps(result),
+        mimetype="application/json",
+        status_code=200,
+        headers=cors_headers,
+    )
+>>>>>>> ab3f10bc07a2679d60556629906ea3cf915939ce

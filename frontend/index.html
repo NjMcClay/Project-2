@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diet Macros Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Chart.js for simple chart rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Diet Macros Dashboard</h1>
+      <p class="subtitle">A lightweight dashboard for Azure Function analysis results.</p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Azure Function</h2>
+        <div class="row actions">
+          <button id="loadBtn" class="primary">Refresh</button>
+        </div>
+        <p id="statusText" class="status" aria-live="polite"></p>
+        <p id="errorText" class="error" aria-live="polite"></p>
+      </section>
+
+      <section class="card">
+        <h2>Metadata</h2>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-label">Execution Time</div>
+            <div id="executionTimeMs" class="meta-value">-</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Last Updated</div>
+            <div id="lastUpdated" class="meta-value">-</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Filters</h2>
+        <p class="help-text">Check/uncheck diets. If you select none, all diets are shown.</p>
+        <div class="row" style="align-items: flex-start;">
+          <label for="dietCheckboxes">Diet Types</label>
+          <div id="dietCheckboxes" class="checkbox-grid" role="group" aria-label="Diet type filter"></div>
+        </div>
+        <div class="row actions">
+          <button id="selectAllBtn" class="secondary">Select All</button>
+        </div>
+      </section>
+
+      <section class="card charts">
+        <h2>Visualizations</h2>
+        <div class="chart-grid">
+          <div class="chart-wrap">
+            <h3>Average Protein by Diet</h3>
+            <canvas id="proteinChart" aria-label="Protein bar chart" role="img"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <h3>Average Macros by Diet (Line)</h3>
+            <canvas id="macrosLineChart" aria-label="Macros line chart" role="img"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <h3>Fat Share by Diet (Doughnut)</h3>
+            <canvas id="fatDoughnutChart" aria-label="Fat doughnut chart" role="img"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+

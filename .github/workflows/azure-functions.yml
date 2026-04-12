@@ -1,0 +1,29 @@
+# Deploy backend/ (Python Azure Functions v2 programming model) to Azure.
+# Prerequisites: Function App exists in Azure; add secrets below in GitHub repo Settings → Secrets.
+
+name: Azure Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/azure-functions.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy function app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: backend
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true

@@ -4,4 +4,7 @@
 
 azure-functions
 azure-storage-blob
+<<<<<<< HEAD
 redis[hiredis]
+=======
+>>>>>>> ab3f10bc07a2679d60556629906ea3cf915939ce
