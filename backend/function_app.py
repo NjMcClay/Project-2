@@ -501,19 +501,35 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError:
         return _json_response(req, {"error": "Invalid JSON body."}, status_code=400)
 
-    name = _normalize_text(body.get("name"))
-    email = _normalize_text(body.get("email")).lower()
-    password = _normalize_text(body.get("password"))
-    if not email or "@" not in email:
-        return _json_response(req, {"error": "Valid email is required."}, status_code=400)
-    if len(password) < 8:
-        return _json_response(req, {"error": "Password must be at least 8 characters."}, status_code=400)
-    if _get_user_by_email(email):
-        return _json_response(req, {"error": "Email already exists."}, status_code=409)
+    try:
+        name = _normalize_text(body.get("name"))
+        email = _normalize_text(body.get("email")).lower()
+        password = _normalize_text(body.get("password"))
+        if not email or "@" not in email:
+            return _json_response(req, {"error": "Valid email is required."}, status_code=400)
+        if len(password) < 8:
+            return _json_response(req, {"error": "Password must be at least 8 characters."}, status_code=400)
+        if _get_user_by_email(email):
+            return _json_response(req, {"error": "Email already exists."}, status_code=409)
 
-    user = _upsert_user(email=email, name=name or email.split("@")[0], provider="local", password_hash=_password_hash(password))
-    token = _jwt_issue(user)
-    return _json_response(req, {"token": token, "user": {"email": user["email"], "name": user["name"], "provider": user["provider"]}})
+        user = _upsert_user(
+            email=email,
+            name=name or email.split("@")[0],
+            provider="local",
+            password_hash=_password_hash(password),
+        )
+        token = _jwt_issue(user)
+        return _json_response(
+            req,
+            {"token": token, "user": {"email": user["email"], "name": user["name"], "provider": user["provider"]}},
+        )
+    except Exception as exc:
+        logging.exception("Register failed: %s", exc)
+        return _json_response(
+            req,
+            {"error": "Register failed.", "debug": str(exc), "debugType": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.route(route="auth/login", methods=["POST", "OPTIONS"])
