@@ -27,6 +27,15 @@
     authErrorText: document.getElementById("authErrorText"),
     loadBtn: document.getElementById("loadBtn"),
     selectAllBtn: document.getElementById("selectAllBtn"),
+    recipeKeyword: document.getElementById("recipeKeyword"),
+    recipeDiet: document.getElementById("recipeDiet"),
+    recipePageSize: document.getElementById("recipePageSize"),
+    recipeSearchBtn: document.getElementById("recipeSearchBtn"),
+    recipePrevBtn: document.getElementById("recipePrevBtn"),
+    recipeNextBtn: document.getElementById("recipeNextBtn"),
+    recipeStatusText: document.getElementById("recipeStatusText"),
+    recipeErrorText: document.getElementById("recipeErrorText"),
+    recipeResults: document.getElementById("recipeResults"),
     dietCheckboxes: document.getElementById("dietCheckboxes"),
     statusText: document.getElementById("statusText"),
     errorText: document.getElementById("errorText"),
@@ -197,6 +206,8 @@
   }
 
   let lastData = null;
+  let recipePage = 1;
+  let recipeTotalPages = 0;
 
   let proteinChart = null;
   let macrosLineChart = null;
@@ -245,6 +256,80 @@
       wrapper.appendChild(text);
       els.dietCheckboxes.appendChild(wrapper);
     });
+  }
+
+  function setRecipeStatus(msg) {
+    els.recipeStatusText.textContent = msg || "";
+  }
+
+  function setRecipeError(msg) {
+    els.recipeErrorText.textContent = msg || "";
+  }
+
+  function ensureRecipeDietOptions(labels) {
+    const current = els.recipeDiet.value;
+    els.recipeDiet.innerHTML = '<option value="">All diets</option>';
+    labels.forEach((label) => {
+      const opt = document.createElement("option");
+      opt.value = label;
+      opt.textContent = label;
+      els.recipeDiet.appendChild(opt);
+    });
+    if (current && labels.includes(current)) els.recipeDiet.value = current;
+  }
+
+  function renderRecipeItems(items) {
+    els.recipeResults.innerHTML = "";
+    if (!items || items.length === 0) {
+      const li = document.createElement("li");
+      li.className = "recipe-item";
+      li.textContent = "No recipes match this query.";
+      els.recipeResults.appendChild(li);
+      return;
+    }
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "recipe-item";
+
+      const title = document.createElement("div");
+      title.className = "recipe-title";
+      title.textContent = item.recipeName;
+
+      const meta = document.createElement("div");
+      meta.className = "recipe-meta";
+      meta.textContent = `${item.dietType} | Protein ${item.proteinG}g | Carbs ${item.carbsG}g | Fat ${item.fatG}g | Calories ${item.calories}`;
+
+      li.appendChild(title);
+      li.appendChild(meta);
+      els.recipeResults.appendChild(li);
+    });
+  }
+
+  async function fetchRecipesPage(targetPage = 1) {
+    setRecipeError("");
+    setRecipeStatus("Loading recipes...");
+    const params = new URLSearchParams();
+    params.set("page", String(targetPage));
+    params.set("pageSize", String(els.recipePageSize.value || "10"));
+    const diet = (els.recipeDiet.value || "").trim();
+    const q = (els.recipeKeyword.value || "").trim();
+    if (diet) params.set("diet", diet);
+    if (q) params.set("q", q);
+
+    const url = `${getApiRoot()}/api/recipes?${params.toString()}`;
+    const resp = await authedFetch(url, { method: "GET" });
+    const text = await resp.text();
+    const data = safeParseJson(text);
+    if (!resp.ok || !data) {
+      throw new Error(data?.error || `Recipes request failed (${resp.status}).`);
+    }
+
+    recipePage = data.page || targetPage;
+    recipeTotalPages = data.totalPages ?? 0;
+    renderRecipeItems(data.items || []);
+    els.recipePrevBtn.disabled = recipePage <= 1;
+    els.recipeNextBtn.disabled = recipeTotalPages === 0 || recipePage >= recipeTotalPages;
+    setRecipeStatus(`Page ${recipePage} of ${recipeTotalPages || 1} | ${data.total ?? 0} recipes`);
   }
 
   function updateCharts(selectedLabels) {
@@ -415,6 +500,7 @@
 
       const labels = data.macrosByDiet.labels || [];
       renderFilterOptions(labels);
+      ensureRecipeDietOptions(labels);
 
       els.executionTimeMs.textContent = `${data.executionTimeMs ?? "-"} ms`;
       els.lastUpdated.textContent = new Date().toLocaleString();
@@ -481,6 +567,33 @@
       });
       onFilterChanged();
     });
+    els.recipeSearchBtn.addEventListener("click", async () => {
+      recipePage = 1;
+      try {
+        await fetchRecipesPage(1);
+      } catch (err) {
+        setRecipeStatus("");
+        setRecipeError(err?.message || "Failed to load recipes.");
+      }
+    });
+    els.recipePrevBtn.addEventListener("click", async () => {
+      if (recipePage <= 1) return;
+      try {
+        await fetchRecipesPage(recipePage - 1);
+      } catch (err) {
+        setRecipeStatus("");
+        setRecipeError(err?.message || "Failed to load previous page.");
+      }
+    });
+    els.recipeNextBtn.addEventListener("click", async () => {
+      if (recipeTotalPages && recipePage >= recipeTotalPages) return;
+      try {
+        await fetchRecipesPage(recipePage + 1);
+      } catch (err) {
+        setRecipeStatus("");
+        setRecipeError(err?.message || "Failed to load next page.");
+      }
+    });
   }
 
   // Initial boot
@@ -490,12 +603,14 @@
     const user = getSavedUser();
     setAuthedUI(user || { name: "User" });
     fetchAnalyze(resolveFunctionUrl());
+    fetchRecipesPage(1).catch(() => {});
   } else if (getToken()) {
     fetchMe()
       .then((user) => {
         saveSession(getToken(), user);
         setAuthedUI(user);
         fetchAnalyze(resolveFunctionUrl());
+        fetchRecipesPage(1).catch(() => {});
       })
       .catch(() => {
         clearSession();

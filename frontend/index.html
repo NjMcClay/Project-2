@@ -79,6 +79,38 @@
           </div>
         </section>
 
+        <section class="card">
+          <h2>Recipe Interaction</h2>
+          <p class="help-text">Search recipes by keyword, filter by diet type, and paginate results.</p>
+          <div class="row">
+            <label for="recipeKeyword">Keyword</label>
+            <input id="recipeKeyword" type="text" placeholder="e.g. salad, soup, chicken" />
+          </div>
+          <div class="row">
+            <label for="recipeDiet">Diet Filter</label>
+            <select id="recipeDiet">
+              <option value="">All diets</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="recipePageSize">Page Size</label>
+            <select id="recipePageSize">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <div class="row actions">
+            <button id="recipeSearchBtn" class="primary">Search Recipes</button>
+            <button id="recipePrevBtn" class="secondary">Prev Page</button>
+            <button id="recipeNextBtn" class="secondary">Next Page</button>
+          </div>
+          <p id="recipeStatusText" class="status" aria-live="polite"></p>
+          <p id="recipeErrorText" class="error" aria-live="polite"></p>
+          <ul id="recipeResults" class="recipe-list"></ul>
+        </section>
+
         <section class="card charts">
           <h2>Visualizations</h2>
           <div class="chart-grid">
