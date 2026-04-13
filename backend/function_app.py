@@ -525,11 +525,7 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
         )
     except Exception as exc:
         logging.exception("Register failed: %s", exc)
-        return _json_response(
-            req,
-            {"error": "Register failed.", "debug": str(exc), "debugType": type(exc).__name__},
-            status_code=500,
-        )
+        return _json_response(req, {"error": "Register failed."}, status_code=500)
 
 
 @app.route(route="auth/login", methods=["POST", "OPTIONS"])
