@@ -273,6 +273,29 @@ def _cache_analyze_payload(payload: dict[str, Any]) -> None:
     client.set(META_CACHE_KEY, json.dumps(payload.get("meta", {})))
 
 
+def _run_preprocess(source_blob_name: str) -> dict[str, Any]:
+    started = time.time()
+    source_blob = blob_service.get_blob_client(container=SOURCE_CONTAINER, blob=source_blob_name)
+    raw_csv = source_blob.download_blob().readall()
+    cleaned_rows = _clean_rows_from_source(raw_csv)
+
+    cleaned_csv = _cleaned_rows_to_csv(cleaned_rows)
+    _write_blob_text(CLEAN_CONTAINER, CLEAN_BLOB_NAME, cleaned_csv)
+
+    analyze_payload = _build_analyze_payload(cleaned_rows, source_blob_name)
+    _cache_analyze_payload(analyze_payload)
+
+    duration_ms = int((time.time() - started) * 1000)
+    return {
+        "ok": True,
+        "sourceBlob": source_blob_name,
+        "cleanedBlob": CLEAN_BLOB_NAME,
+        "cleanedRows": len(cleaned_rows),
+        "cacheKey": ANALYZE_CACHE_KEY,
+        "durationMs": duration_ms,
+    }
+
+
 @app.blob_trigger(
     arg_name="inputblob",
     path="%DIET_SOURCE_CONTAINER%/%DIET_SOURCE_BLOB_NAME%",
@@ -303,6 +326,32 @@ def preprocess_diet_blob(inputblob: func.InputStream) -> None:
         ANALYZE_CACHE_KEY,
         duration_ms,
     )
+
+
+@app.route(route="preprocess", methods=["GET", "POST", "HEAD", "OPTIONS"])
+def preprocess(req: func.HttpRequest) -> func.HttpResponse:
+    short_circuit = _options_or_head(req)
+    if short_circuit:
+        return short_circuit
+
+    auth_error = _require_api_secret(req)
+    if auth_error:
+        return auth_error
+
+    source_blob_name = _normalize_text(req.params.get("blob")) or SOURCE_BLOB_NAME
+    try:
+        result = _run_preprocess(source_blob_name)
+        logging.info(
+            "Manual preprocess completed. source_blob=%s cleaned_blob=%s cleaned_rows=%s duration_ms=%s",
+            result["sourceBlob"],
+            result["cleanedBlob"],
+            result["cleanedRows"],
+            result["durationMs"],
+        )
+        return _json_response(req, result)
+    except Exception as exc:
+        logging.exception("Manual preprocess failed: %s", exc)
+        return _json_response(req, {"error": "Manual preprocess failed."}, status_code=500)
 
 
 @app.route(route="analyze", methods=["GET", "HEAD", "OPTIONS"])
