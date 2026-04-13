@@ -39,6 +39,9 @@
   }
 
   function setError(msg) {
+    els.errorText.textContent = msg || "";
+  }
+
   function setAuthStatus(msg) {
     els.authStatusText.textContent = msg || "";
   }
@@ -154,9 +157,6 @@
     const cleanUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
     window.history.replaceState({}, "", cleanUrl);
     return true;
-  }
-
-    els.errorText.textContent = msg || "";
   }
 
   function resolveFunctionUrl() {
