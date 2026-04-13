@@ -425,7 +425,7 @@ def _upsert_user(email: str, name: str, provider: str, password_hash: str = "", 
         "createdAtUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "userId": user_id,
     }
-    table.upsert_entity(entity=entity, mode="Merge")
+    table.upsert_entity(entity=entity)
     return entity
 
 
