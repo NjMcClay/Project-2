@@ -39,7 +39,6 @@ def get_redis_client() -> redis.Redis:
         REDIS_URL,
         password=REDIS_KEY or None,
         decode_responses=True,
-        ssl=True,
     )
 
 
