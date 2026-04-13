@@ -4,4 +4,6 @@
 
 azure-functions
 azure-storage-blob
+azure-data-tables
+PyJWT
 redis[hiredis]

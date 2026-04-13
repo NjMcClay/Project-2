@@ -22,6 +22,21 @@ Add these app settings in the Azure Portal for the Function App.
 - `REDIS_URL=rediss://<your-redis-name>.redis.cache.windows.net:6380/0`
 - `REDIS_KEY=<your-redis-primary-key>`
 
+## Auth / users
+
+- `AUTH_REQUIRED=true`
+- `JWT_SECRET=<strong-random-secret>`
+- `JWT_ISSUER=diet-dashboard`
+- `JWT_AUDIENCE=diet-dashboard-users`
+- `JWT_TTL_SECONDS=86400`
+- `USERS_TABLE=users`
+
+## GitHub OAuth
+
+- `GITHUB_CLIENT_ID=<github-oauth-client-id>`
+- `GITHUB_CLIENT_SECRET=<github-oauth-client-secret>`
+- `GITHUB_REDIRECT_URI=https://<your-function-app>.azurewebsites.net/api/auth/github/callback`
+
 ## Cache keys
 
 - `ANALYZE_CACHE_KEY=diet:analyze:v1`

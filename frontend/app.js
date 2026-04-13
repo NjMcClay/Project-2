@@ -8,7 +8,23 @@
 
   const LOCAL_ANALYZE_URL = "http://localhost:7071/api/analyze";
 
+  const AUTH_TOKEN_KEY = "dietAuthToken";
+  const AUTH_USER_KEY = "dietAuthUser";
+
   const els = {
+    authCard: document.getElementById("authCard"),
+    dashboardRoot: document.getElementById("dashboardRoot"),
+    userBar: document.getElementById("userBar"),
+    userName: document.getElementById("userName"),
+    logoutBtn: document.getElementById("logoutBtn"),
+    authName: document.getElementById("authName"),
+    authEmail: document.getElementById("authEmail"),
+    authPassword: document.getElementById("authPassword"),
+    registerBtn: document.getElementById("registerBtn"),
+    loginBtn: document.getElementById("loginBtn"),
+    githubBtn: document.getElementById("githubBtn"),
+    authStatusText: document.getElementById("authStatusText"),
+    authErrorText: document.getElementById("authErrorText"),
     loadBtn: document.getElementById("loadBtn"),
     selectAllBtn: document.getElementById("selectAllBtn"),
     dietCheckboxes: document.getElementById("dietCheckboxes"),
@@ -23,6 +39,123 @@
   }
 
   function setError(msg) {
+  function setAuthStatus(msg) {
+    els.authStatusText.textContent = msg || "";
+  }
+
+  function setAuthError(msg) {
+    els.authErrorText.textContent = msg || "";
+  }
+
+  function getApiRoot() {
+    const analyzeUrl = resolveFunctionUrl();
+    return analyzeUrl.replace(/\/api\/analyze$/, "");
+  }
+
+  function getToken() {
+    return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  }
+
+  function getSavedUser() {
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  function saveSession(token, user) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  }
+
+  function clearSession() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+  }
+
+  function setAuthedUI(user) {
+    els.authCard.classList.add("hidden");
+    els.dashboardRoot.classList.remove("hidden");
+    els.userBar.classList.remove("hidden");
+    els.userName.textContent = user?.name ? `Logged in: ${user.name}` : "Logged in";
+  }
+
+  function setLoggedOutUI() {
+    els.authCard.classList.remove("hidden");
+    els.dashboardRoot.classList.add("hidden");
+    els.userBar.classList.add("hidden");
+    els.userName.textContent = "";
+  }
+
+  async function authedFetch(url, options = {}) {
+    const token = getToken();
+    const headers = { ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(url, { ...options, headers });
+  }
+
+  async function fetchMe() {
+    const resp = await authedFetch(`${getApiRoot()}/api/auth/me`, { method: "GET" });
+    const text = await resp.text();
+    const data = safeParseJson(text);
+    if (!resp.ok || !data?.user) throw new Error(data?.error || `Auth check failed (${resp.status})`);
+    return data.user;
+  }
+
+  async function registerOrLogin(mode) {
+    setAuthError("");
+    setAuthStatus(mode === "register" ? "Creating account..." : "Logging in...");
+    const payload = {
+      name: (els.authName.value || "").trim(),
+      email: (els.authEmail.value || "").trim(),
+      password: els.authPassword.value || "",
+    };
+    const path = mode === "register" ? "/api/auth/register" : "/api/auth/login";
+    const resp = await fetch(`${getApiRoot()}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const text = await resp.text();
+    const data = safeParseJson(text);
+    if (!resp.ok || !data?.token || !data?.user) {
+      throw new Error(data?.error || `${mode} failed (${resp.status})`);
+    }
+    saveSession(data.token, data.user);
+    setAuthStatus("");
+    setAuthedUI(data.user);
+    await fetchAnalyze(resolveFunctionUrl());
+  }
+
+  async function startGithubLogin() {
+    setAuthError("");
+    setAuthStatus("Redirecting to GitHub...");
+    const returnTo = `${window.location.origin}${window.location.pathname}`;
+    const resp = await fetch(`${getApiRoot()}/api/auth/github/start?returnTo=${encodeURIComponent(returnTo)}`);
+    const text = await resp.text();
+    const data = safeParseJson(text);
+    if (!resp.ok || !data?.url) throw new Error(data?.error || `GitHub OAuth start failed (${resp.status})`);
+    window.location.assign(data.url);
+  }
+
+  function consumeOAuthCallbackToken() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const name = params.get("name");
+    if (!token) return false;
+    const user = { name: name || "GitHub User", email: "", provider: "github" };
+    saveSession(token, user);
+    params.delete("token");
+    params.delete("name");
+    const nextQuery = params.toString();
+    const cleanUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+    return true;
+  }
+
     els.errorText.textContent = msg || "";
   }
 
@@ -266,7 +399,7 @@
     setStatus("Loading analysis data...");
 
     try {
-      const resp = await fetch(url, { method: "GET" });
+      const resp = await authedFetch(url, { method: "GET" });
       const text = await resp.text();
       const data = safeParseJson(text);
       if (!resp.ok) {
@@ -304,6 +437,37 @@
   }
 
   function wireUI() {
+    els.registerBtn.addEventListener("click", async () => {
+      try {
+        await registerOrLogin("register");
+      } catch (err) {
+        setAuthStatus("");
+        setAuthError(err?.message || "Register failed.");
+      }
+    });
+    els.loginBtn.addEventListener("click", async () => {
+      try {
+        await registerOrLogin("login");
+      } catch (err) {
+        setAuthStatus("");
+        setAuthError(err?.message || "Login failed.");
+      }
+    });
+    els.githubBtn.addEventListener("click", async () => {
+      try {
+        await startGithubLogin();
+      } catch (err) {
+        setAuthStatus("");
+        setAuthError(err?.message || "GitHub login failed.");
+      }
+    });
+    els.logoutBtn.addEventListener("click", () => {
+      clearSession();
+      setLoggedOutUI();
+      setStatus("");
+      setError("");
+      setAuthStatus("Logged out.");
+    });
     els.loadBtn.addEventListener("click", () => {
       const url = resolveFunctionUrl();
       fetchAnalyze(url);
@@ -322,8 +486,23 @@
   // Initial boot
   initCharts();
   wireUI();
-
-  const initialUrl = resolveFunctionUrl();
-  fetchAnalyze(initialUrl);
+  if (consumeOAuthCallbackToken()) {
+    const user = getSavedUser();
+    setAuthedUI(user || { name: "User" });
+    fetchAnalyze(resolveFunctionUrl());
+  } else if (getToken()) {
+    fetchMe()
+      .then((user) => {
+        saveSession(getToken(), user);
+        setAuthedUI(user);
+        fetchAnalyze(resolveFunctionUrl());
+      })
+      .catch(() => {
+        clearSession();
+        setLoggedOutUI();
+      });
+  } else {
+    setLoggedOutUI();
+  }
 })();
 

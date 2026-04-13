@@ -1,14 +1,21 @@
 import csv
+import hashlib
+import hmac
 import io
 import json
 import logging
 import math
 import os
+import secrets
 import time
+import urllib.parse
+import urllib.request
 from typing import Any
 
 import azure.functions as func
+import jwt
 from azure.storage.blob import BlobServiceClient
+from azure.data.tables import TableServiceClient
 import redis
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -28,8 +35,18 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 REDIS_KEY = os.getenv("REDIS_KEY", "")
 API_SHARED_SECRET = os.getenv("API_SHARED_SECRET", "").strip()
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
+JWT_ISSUER = os.getenv("JWT_ISSUER", "diet-dashboard")
+JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "diet-dashboard-users")
+JWT_TTL_SECONDS = int(os.getenv("JWT_TTL_SECONDS", "86400"))
+USERS_TABLE = os.getenv("USERS_TABLE", "users")
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "").strip()
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "").strip()
+GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "").strip()
+AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "true").lower() != "false"
 
 blob_service = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+table_service = TableServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
 
 
 def get_redis_client() -> redis.Redis:
@@ -63,7 +80,7 @@ def _access_control_allow_origin(req: func.HttpRequest) -> str:
 def _cors_headers(req: func.HttpRequest) -> dict[str, str]:
     return {
         "Access-Control-Allow-Origin": _access_control_allow_origin(req),
-        "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,HEAD,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
     }
 
@@ -112,6 +129,94 @@ def _require_api_secret(req: func.HttpRequest) -> func.HttpResponse | None:
         return None
 
     return _unauthorized(req)
+
+
+def _users_table_client():
+    table = table_service.create_table_if_not_exists(table_name=USERS_TABLE)
+    return table
+
+
+def _password_hash(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200000)
+    return f"pbkdf2_sha256${salt}${digest.hex()}"
+
+
+def _password_verify(password: str, stored_hash: str) -> bool:
+    try:
+        algo, salt, expected = stored_hash.split("$", 2)
+    except ValueError:
+        return False
+    if algo != "pbkdf2_sha256":
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200000).hex()
+    return hmac.compare_digest(digest, expected)
+
+
+def _jwt_issue(user: dict[str, Any]) -> str:
+    if not JWT_SECRET:
+        raise RuntimeError("JWT_SECRET is not configured.")
+    now = int(time.time())
+    payload = {
+        "sub": user["userId"],
+        "email": user["email"],
+        "name": user["name"],
+        "provider": user.get("provider", "local"),
+        "iat": now,
+        "exp": now + JWT_TTL_SECONDS,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def _jwt_decode(token: str) -> dict[str, Any]:
+    if not JWT_SECRET:
+        raise RuntimeError("JWT_SECRET is not configured.")
+    return jwt.decode(token, JWT_SECRET, algorithms=["HS256"], issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
+
+
+def _extract_bearer_token(req: func.HttpRequest) -> str:
+    auth = (req.headers.get("Authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
+
+def _require_user(req: func.HttpRequest) -> tuple[dict[str, Any] | None, func.HttpResponse | None]:
+    if not AUTH_REQUIRED:
+        return ({"sub": "anonymous", "email": "", "name": "Anonymous", "provider": "none"}, None)
+    token = _extract_bearer_token(req)
+    if not token:
+        return (None, _json_response(req, {"error": "Missing Authorization bearer token."}, status_code=401))
+    try:
+        claims = _jwt_decode(token)
+        return (claims, None)
+    except Exception:
+        return (None, _json_response(req, {"error": "Invalid or expired token."}, status_code=401))
+
+
+def _state_sign(value: str) -> str:
+    if not JWT_SECRET:
+        return value
+    sig = hmac.new(JWT_SECRET.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{value}.{sig}"
+
+
+def _state_verify(signed_value: str) -> str | None:
+    if not JWT_SECRET:
+        return signed_value
+    if "." not in signed_value:
+        return None
+    value, sig = signed_value.rsplit(".", 1)
+    expected = hmac.new(JWT_SECRET.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    return value
+
+
+def _auth_provider_enabled() -> bool:
+    return bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET and GITHUB_REDIRECT_URI)
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -295,6 +400,35 @@ def _run_preprocess(source_blob_name: str) -> dict[str, Any]:
     }
 
 
+def _get_user_by_email(email: str) -> dict[str, Any] | None:
+    table = _users_table_client()
+    key = email.strip().lower()
+    try:
+        entity = table.get_entity(partition_key="USER", row_key=key)
+        return dict(entity)
+    except Exception:
+        return None
+
+
+def _upsert_user(email: str, name: str, provider: str, password_hash: str = "", oauth_id: str = "") -> dict[str, Any]:
+    table = _users_table_client()
+    email_norm = email.strip().lower()
+    user_id = oauth_id or email_norm
+    entity = {
+        "PartitionKey": "USER",
+        "RowKey": email_norm,
+        "email": email_norm,
+        "name": name.strip() or email_norm,
+        "provider": provider,
+        "passwordHash": password_hash,
+        "oauthId": oauth_id,
+        "createdAtUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "userId": user_id,
+    }
+    table.upsert_entity(entity=entity, mode="Merge")
+    return entity
+
+
 @app.blob_trigger(
     arg_name="inputblob",
     path="%DIET_SOURCE_CONTAINER%/%DIET_SOURCE_BLOB_NAME%",
@@ -333,6 +467,10 @@ def preprocess(req: func.HttpRequest) -> func.HttpResponse:
     if short_circuit:
         return short_circuit
 
+    _, auth_required_error = _require_user(req)
+    if auth_required_error:
+        return auth_required_error
+
     auth_error = _require_api_secret(req)
     if auth_error:
         return auth_error
@@ -353,11 +491,160 @@ def preprocess(req: func.HttpRequest) -> func.HttpResponse:
         return _json_response(req, {"error": "Manual preprocess failed."}, status_code=500)
 
 
+@app.route(route="auth/register", methods=["POST", "OPTIONS"])
+def auth_register(req: func.HttpRequest) -> func.HttpResponse:
+    short_circuit = _options_or_head(req)
+    if short_circuit:
+        return short_circuit
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _json_response(req, {"error": "Invalid JSON body."}, status_code=400)
+
+    name = _normalize_text(body.get("name"))
+    email = _normalize_text(body.get("email")).lower()
+    password = _normalize_text(body.get("password"))
+    if not email or "@" not in email:
+        return _json_response(req, {"error": "Valid email is required."}, status_code=400)
+    if len(password) < 8:
+        return _json_response(req, {"error": "Password must be at least 8 characters."}, status_code=400)
+    if _get_user_by_email(email):
+        return _json_response(req, {"error": "Email already exists."}, status_code=409)
+
+    user = _upsert_user(email=email, name=name or email.split("@")[0], provider="local", password_hash=_password_hash(password))
+    token = _jwt_issue(user)
+    return _json_response(req, {"token": token, "user": {"email": user["email"], "name": user["name"], "provider": user["provider"]}})
+
+
+@app.route(route="auth/login", methods=["POST", "OPTIONS"])
+def auth_login(req: func.HttpRequest) -> func.HttpResponse:
+    short_circuit = _options_or_head(req)
+    if short_circuit:
+        return short_circuit
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _json_response(req, {"error": "Invalid JSON body."}, status_code=400)
+
+    email = _normalize_text(body.get("email")).lower()
+    password = _normalize_text(body.get("password"))
+    user = _get_user_by_email(email)
+    if not user:
+        return _json_response(req, {"error": "Invalid credentials."}, status_code=401)
+    if user.get("provider") != "local":
+        return _json_response(req, {"error": "Use social login for this account."}, status_code=400)
+    if not _password_verify(password, user.get("passwordHash", "")):
+        return _json_response(req, {"error": "Invalid credentials."}, status_code=401)
+
+    token = _jwt_issue(user)
+    return _json_response(req, {"token": token, "user": {"email": user["email"], "name": user["name"], "provider": user["provider"]}})
+
+
+@app.route(route="auth/me", methods=["GET", "OPTIONS"])
+def auth_me(req: func.HttpRequest) -> func.HttpResponse:
+    short_circuit = _options_or_head(req)
+    if short_circuit:
+        return short_circuit
+    claims, error = _require_user(req)
+    if error:
+        return error
+    return _json_response(req, {"user": {"email": claims.get("email"), "name": claims.get("name"), "provider": claims.get("provider")}})
+
+
+@app.route(route="auth/github/start", methods=["GET", "OPTIONS"])
+def auth_github_start(req: func.HttpRequest) -> func.HttpResponse:
+    short_circuit = _options_or_head(req)
+    if short_circuit:
+        return short_circuit
+    if not _auth_provider_enabled():
+        return _json_response(req, {"error": "GitHub OAuth is not configured."}, status_code=503)
+    return_to = _normalize_text(req.params.get("returnTo")) or req.headers.get("Origin") or ""
+    state_raw = json.dumps({"nonce": secrets.token_urlsafe(12), "returnTo": return_to})
+    state = _state_sign(state_raw)
+    params = urllib.parse.urlencode(
+        {
+            "client_id": GITHUB_CLIENT_ID,
+            "redirect_uri": GITHUB_REDIRECT_URI,
+            "scope": "read:user user:email",
+            "state": state,
+        }
+    )
+    return _json_response(req, {"url": f"https://github.com/login/oauth/authorize?{params}"})
+
+
+@app.route(route="auth/github/callback", methods=["GET"])
+def auth_github_callback(req: func.HttpRequest) -> func.HttpResponse:
+    code = _normalize_text(req.params.get("code"))
+    state = _normalize_text(req.params.get("state"))
+    state_raw = _state_verify(state)
+    if not code or not state_raw:
+        return func.HttpResponse("OAuth callback missing required parameters.", status_code=400)
+    try:
+        state_obj = json.loads(state_raw)
+    except json.JSONDecodeError:
+        return func.HttpResponse("OAuth state is invalid.", status_code=400)
+    return_to = _normalize_text(state_obj.get("returnTo"))
+    if not return_to:
+        return_to = "https://lively-ocean-0a4dc570f.6.azurestaticapps.net"
+
+    token_req = urllib.request.Request(
+        "https://github.com/login/oauth/access_token",
+        data=urllib.parse.urlencode(
+            {
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+                "redirect_uri": GITHUB_REDIRECT_URI,
+            }
+        ).encode("utf-8"),
+        headers={"Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(token_req, timeout=15) as resp:
+        token_data = json.loads(resp.read().decode("utf-8"))
+    access_token = _normalize_text(token_data.get("access_token"))
+    if not access_token:
+        return func.HttpResponse("GitHub token exchange failed.", status_code=400)
+
+    user_req = urllib.request.Request(
+        "https://api.github.com/user",
+        headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}", "User-Agent": "diet-dashboard"},
+        method="GET",
+    )
+    with urllib.request.urlopen(user_req, timeout=15) as resp:
+        gh_user = json.loads(resp.read().decode("utf-8"))
+    email = _normalize_text(gh_user.get("email"))
+    if not email:
+        email_req = urllib.request.Request(
+            "https://api.github.com/user/emails",
+            headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}", "User-Agent": "diet-dashboard"},
+            method="GET",
+        )
+        with urllib.request.urlopen(email_req, timeout=15) as resp:
+            emails = json.loads(resp.read().decode("utf-8"))
+        primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
+        if not primary:
+            primary = next((e for e in emails if e.get("verified")), None)
+        email = _normalize_text((primary or {}).get("email"))
+    if not email:
+        return func.HttpResponse("GitHub account email is not available.", status_code=400)
+
+    name = _normalize_text(gh_user.get("name") or gh_user.get("login") or email.split("@")[0])
+    user = _upsert_user(email=email, name=name, provider="github", oauth_id=str(gh_user.get("id") or email))
+    token = _jwt_issue(user)
+    dest = f"{return_to}{'&' if '?' in return_to else '?'}token={urllib.parse.quote(token)}&name={urllib.parse.quote(user['name'])}"
+    return func.HttpResponse(status_code=302, headers={"Location": dest})
+
+
 @app.route(route="analyze", methods=["GET", "HEAD", "OPTIONS"])
 def analyze(req: func.HttpRequest) -> func.HttpResponse:
     short_circuit = _options_or_head(req)
     if short_circuit:
         return short_circuit
+
+    _, auth_required_error = _require_user(req)
+    if auth_required_error:
+        return auth_required_error
 
     auth_error = _require_api_secret(req)
     if auth_error:
@@ -392,6 +679,10 @@ def recipes(req: func.HttpRequest) -> func.HttpResponse:
     short_circuit = _options_or_head(req)
     if short_circuit:
         return short_circuit
+
+    _, auth_required_error = _require_user(req)
+    if auth_required_error:
+        return auth_required_error
 
     auth_error = _require_api_secret(req)
     if auth_error:

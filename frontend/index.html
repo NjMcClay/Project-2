@@ -12,61 +12,91 @@
     <header class="page-header">
       <h1>Diet Macros Dashboard</h1>
       <p class="subtitle">A lightweight dashboard for Azure Function analysis results.</p>
+      <div id="userBar" class="user-bar hidden">
+        <span id="userName"></span>
+        <button id="logoutBtn" class="secondary">Logout</button>
+      </div>
     </header>
 
     <main class="container">
-      <section class="card">
-        <h2>Azure Function</h2>
-        <div class="row actions">
-          <button id="loadBtn" class="primary">Refresh</button>
+      <section id="authCard" class="card">
+        <h2>Login / Register</h2>
+        <p class="help-text">Sign in with email/password or GitHub to view the dashboard.</p>
+        <div class="row">
+          <label for="authName">Name</label>
+          <input id="authName" type="text" placeholder="Your name (for register)" />
         </div>
-        <p id="statusText" class="status" aria-live="polite"></p>
-        <p id="errorText" class="error" aria-live="polite"></p>
-      </section>
-
-      <section class="card">
-        <h2>Metadata</h2>
-        <div class="meta-grid">
-          <div class="meta-item">
-            <div class="meta-label">Execution Time</div>
-            <div id="executionTimeMs" class="meta-value">-</div>
-          </div>
-          <div class="meta-item">
-            <div class="meta-label">Last Updated</div>
-            <div id="lastUpdated" class="meta-value">-</div>
-          </div>
+        <div class="row">
+          <label for="authEmail">Email</label>
+          <input id="authEmail" type="email" placeholder="you@example.com" />
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Filters</h2>
-        <p class="help-text">Check/uncheck diets. If you select none, all diets are shown.</p>
-        <div class="row" style="align-items: flex-start;">
-          <label for="dietCheckboxes">Diet Types</label>
-          <div id="dietCheckboxes" class="checkbox-grid" role="group" aria-label="Diet type filter"></div>
+        <div class="row">
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" placeholder="At least 8 characters" />
         </div>
         <div class="row actions">
-          <button id="selectAllBtn" class="secondary">Select All</button>
+          <button id="registerBtn" class="secondary">Register</button>
+          <button id="loginBtn" class="primary">Login</button>
+          <button id="githubBtn" class="secondary">Login with GitHub</button>
         </div>
+        <p id="authStatusText" class="status" aria-live="polite"></p>
+        <p id="authErrorText" class="error" aria-live="polite"></p>
       </section>
 
-      <section class="card charts">
-        <h2>Visualizations</h2>
-        <div class="chart-grid">
-          <div class="chart-wrap">
-            <h3>Average Protein by Diet</h3>
-            <canvas id="proteinChart" aria-label="Protein bar chart" role="img"></canvas>
+      <div id="dashboardRoot" class="hidden">
+        <section class="card">
+          <h2>Azure Function</h2>
+          <div class="row actions">
+            <button id="loadBtn" class="primary">Refresh</button>
           </div>
-          <div class="chart-wrap">
-            <h3>Average Macros by Diet (Line)</h3>
-            <canvas id="macrosLineChart" aria-label="Macros line chart" role="img"></canvas>
+          <p id="statusText" class="status" aria-live="polite"></p>
+          <p id="errorText" class="error" aria-live="polite"></p>
+        </section>
+
+        <section class="card">
+          <h2>Metadata</h2>
+          <div class="meta-grid">
+            <div class="meta-item">
+              <div class="meta-label">Execution Time</div>
+              <div id="executionTimeMs" class="meta-value">-</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Last Updated</div>
+              <div id="lastUpdated" class="meta-value">-</div>
+            </div>
           </div>
-          <div class="chart-wrap">
-            <h3>Fat Share by Diet (Doughnut)</h3>
-            <canvas id="fatDoughnutChart" aria-label="Fat doughnut chart" role="img"></canvas>
+        </section>
+
+        <section class="card">
+          <h2>Filters</h2>
+          <p class="help-text">Check/uncheck diets. If you select none, all diets are shown.</p>
+          <div class="row" style="align-items: flex-start;">
+            <label for="dietCheckboxes">Diet Types</label>
+            <div id="dietCheckboxes" class="checkbox-grid" role="group" aria-label="Diet type filter"></div>
           </div>
-        </div>
-      </section>
+          <div class="row actions">
+            <button id="selectAllBtn" class="secondary">Select All</button>
+          </div>
+        </section>
+
+        <section class="card charts">
+          <h2>Visualizations</h2>
+          <div class="chart-grid">
+            <div class="chart-wrap">
+              <h3>Average Protein by Diet</h3>
+              <canvas id="proteinChart" aria-label="Protein bar chart" role="img"></canvas>
+            </div>
+            <div class="chart-wrap">
+              <h3>Average Macros by Diet (Line)</h3>
+              <canvas id="macrosLineChart" aria-label="Macros line chart" role="img"></canvas>
+            </div>
+            <div class="chart-wrap">
+              <h3>Fat Share by Diet (Doughnut)</h3>
+              <canvas id="fatDoughnutChart" aria-label="Fat doughnut chart" role="img"></canvas>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
 
     <script src="app.js"></script>
