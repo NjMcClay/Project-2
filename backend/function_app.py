@@ -350,15 +350,7 @@ def preprocess(req: func.HttpRequest) -> func.HttpResponse:
         return _json_response(req, result)
     except Exception as exc:
         logging.exception("Manual preprocess failed: %s", exc)
-        return _json_response(
-            req,
-            {
-                "error": "Manual preprocess failed.",
-                "debug": str(exc),
-                "debugType": type(exc).__name__,
-            },
-            status_code=500,
-        )
+        return _json_response(req, {"error": "Manual preprocess failed."}, status_code=500)
 
 
 @app.route(route="analyze", methods=["GET", "HEAD", "OPTIONS"])
@@ -392,15 +384,7 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as exc:
         logging.exception("Failed to read analyze payload from Redis: %s", exc)
-        return _json_response(
-            req,
-            {
-                "error": "Failed to read cached analysis.",
-                "debug": str(exc),
-                "debugType": type(exc).__name__,
-            },
-            status_code=500,
-        )
+        return _json_response(req, {"error": "Failed to read cached analysis."}, status_code=500)
 
 
 @app.route(route="recipes", methods=["GET", "HEAD", "OPTIONS"])
